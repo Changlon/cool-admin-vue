@@ -1,12 +1,9 @@
 import type { Plugin } from "vite";
 import { createEps } from "./eps";
-import { createModule } from "./module";
+import { createCtx } from "./ctx";
 
-export function virtual(): Plugin {
-	const virtualModuleIds = ["virtual:eps", "virtual:module"];
-
-	// 首次启动加载 Eps
-	createEps();
+export async function virtual(): Promise<Plugin> {
+	const virtualModuleIds: string[] = ["virtual:eps", "virtual:ctx"];
 
 	return {
 		name: "vite-cool-virtual",
@@ -28,18 +25,22 @@ export function virtual(): Plugin {
 				next();
 			});
 		},
-		async handleHotUpdate({ file, server }) {
-			// 代码保存时触发
-			if (!file.includes("build/cool/dist")) {
-				const { service } = await createEps();
+		handleHotUpdate({ file, server }) {
+			// 文件修改时触发
+			if (
+				!["pages.json", "dist", "build/cool", "eps.json", "eps.d.ts"].some((e) =>
+					file.includes(e),
+				)
+			) {
+				createCtx();
 
-				// 通知客户端刷新
-				server.ws.send({
-					type: "custom",
-					event: "eps-update",
-					data: {
-						service
-					}
+				createEps().then((data) => {
+					// 通知客户端刷新
+					(server.hot || server.ws).send({
+						type: "custom",
+						event: "eps-update",
+						data,
+					});
 				});
 			}
 		},
@@ -50,20 +51,19 @@ export function virtual(): Plugin {
 		},
 		async load(id) {
 			if (id === "\0virtual:eps") {
-				const { service } = await createEps();
+				const eps = await createEps();
 
 				return `
-					export const eps = ${JSON.stringify({ service })}
+					export const eps = ${JSON.stringify(eps)}
 				`;
 			}
-
-			if (id === "\0virtual:module") {
-				const { dirs } = createModule();
+			if (id === "\0virtual:ctx") {
+				const ctx = await createCtx();
 
 				return `
-					export const dirs = ${JSON.stringify(dirs)}
+					export const ctx = ${JSON.stringify(ctx)}
 				`;
 			}
-		}
+		},
 	};
 }

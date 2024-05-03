@@ -1,7 +1,7 @@
 import { createWriteStream } from "fs";
 import prettier from "prettier";
 import { join } from "path";
-import { mkdirs } from "../utils";
+import { createDir } from "../utils";
 
 // 创建文件
 export async function createMenu(options: { viewPath: string; code: string }) {
@@ -15,7 +15,7 @@ export async function createMenu(options: { viewPath: string; code: string }) {
 		jsxBracketSameLine: true,
 		singleQuote: false,
 		printWidth: 100,
-		trailingComma: "none"
+		trailingComma: "none",
 	});
 
 	// 目录路径
@@ -24,11 +24,14 @@ export async function createMenu(options: { viewPath: string; code: string }) {
 	// 文件名
 	const fname = dir.pop();
 
+	// 源码路径
+	const srcPath = `./src/${dir.join("/")}`;
+
 	// 创建目录
-	const path = mkdirs(`./src/${dir.join("/")}`);
+	createDir(srcPath, true);
 
 	// 创建文件
-	createWriteStream(join(path, fname || "demo"), {
-		flags: "w"
+	createWriteStream(join(srcPath, fname || "demo"), {
+		flags: "w",
 	}).write(content);
 }
