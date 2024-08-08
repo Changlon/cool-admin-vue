@@ -12,6 +12,17 @@
     <img src="https://img.shields.io/github/last-commit/cool-team-official/cool-admin-vue?style=flat-square" alt="GitHub tag"></a>
 </p>
 
+## 特性
+
+Ai时代，很多老旧的框架已经无法满足现代化的开发需求，Cool-Admin开发了一系列的功能，让开发变得更简单、更快速、更高效。
+
+- **Ai编码**：通过微调大模型学习框架特有写法，实现简单功能从Api接口到前端页面的一键生成
+- **流程编排**：通过拖拽编排方式，即可实现类似像智能客服这样的功能
+- **模块化**：代码是模块化的，清晰明了，方便维护
+- **插件化**：插件化的设计，可以通过安装插件的方式扩展如：支付、短信、邮件等功能
+
+![](https://cool-show.oss-cn-shanghai.aliyuncs.com/admin/flow.png)
+
 ## 地址
 
 -   [📌 v6 vue3 + element-plus + ts + vite](https://github.com/cool-team-official/cool-admin-vue/tree/6.x)
@@ -36,16 +47,24 @@
 
 [https://github.com/cool-team-official/cool-admin-midway](https://github.com/cool-team-official/cool-admin-midway)
 
+或
+
+[https://gitee.com/cool-team-official/cool-admin-midway](https://gitee.com/cool-team-official/cool-admin-midway)
+
+或
+
+[https://gitcode.com/cool_team/cool-admin-midway](https://gitcode.com/cool_team/cool-admin-midway)
+
 ## 微信群
 
 <img width="260" src="https://cool-show.oss-cn-shanghai.aliyuncs.com/admin/wechat.jpeg" alt="Admin Wechat"></a>
 
 ## 安装项目依赖
 
-推荐使用 `yarn`：
+推荐使用 `pnpm`：
 
 ```shell
-yarn
+pnpm i
 ```
 
 ## 运行应用程序
@@ -53,9 +72,9 @@ yarn
 安装过程完成后，运行以下命令启动服务。您可以在浏览器中预览网站 [http://localhost:9000](http://localhost:9000)
 
 ```shell
-yarn dev
+pnpm dev
 ```
 
 ### 低价服务器
 
-[阿里云、腾讯云、华为云低价云服务器，不限新老](https://cool-js.com/ad/server.html)
+[阿里云、腾讯云、华为云低价云服务器，不限新老](https://cool-js.com/service/cloud)

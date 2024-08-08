@@ -1,6 +1,3 @@
-/// <reference types="@cool-vue/crud/index.d.ts" />
-/// <reference types="../build/cool/eps.d.ts" />
-
 interface ImportMetaEnv {
 	readonly VITE_NAME: string;
 	readonly VITE_TIMEOUT: number;

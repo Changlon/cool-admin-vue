@@ -1,13 +1,16 @@
 import { join } from "path";
-import { readFile, rootDir, writeFile } from "../utils";
+import { readFile, rootDir, writeFile, error } from "../utils";
 import { glob } from "glob";
-import { assign, cloneDeep, isEqual } from "lodash";
-import type { Ctx } from "../../types";
+import { assign, cloneDeep, isEqual, orderBy } from "lodash";
 import { config } from "../config";
 import fs from "fs";
+import axios from "axios";
+import type { Ctx } from "../../types";
 
 export async function createCtx() {
-	let ctx: Ctx.Data = {};
+	let ctx: Ctx.Data = {
+		serviceLang: "Node",
+	};
 
 	if (config.type == "app") {
 		const manifest = readFile(rootDir("manifest.json"), true);
@@ -61,8 +64,16 @@ export async function createCtx() {
 			}
 		}
 
+		// 排序后检测，避免加载顺序问题
+		function order(d: Ctx.Data) {
+			return {
+				pages: orderBy(d.pages, "path"),
+				subPackages: orderBy(d.subPackages, "root"),
+			};
+		}
+
 		// 是否需要更新 pages.json
-		if (!isEqual(ctxData, ctx)) {
+		if (!isEqual(order(ctxData), order(ctx))) {
 			console.log("[cool-ctx] pages updated");
 			writeFile(ctxPath, JSON.stringify(ctx, null, 4));
 		}
@@ -74,6 +85,23 @@ export async function createCtx() {
 	if (config.type == "admin") {
 		const list = fs.readdirSync(rootDir("./src/modules"));
 		ctx.modules = list.filter((e) => !e.includes("."));
+
+		await axios
+			.get(config.reqUrl + "/admin/base/comm/program", {
+				timeout: 5000,
+			})
+			.then((res) => {
+				const { code, data, message } = res.data;
+
+				if (code === 1000) {
+					ctx.serviceLang = data || "Node";
+				} else {
+					error(`[cool-ctx] ${message}`);
+				}
+			})
+			.catch((err) => {
+				// console.error(['[cool-ctx] ', err.message])
+			});
 	}
 
 	return ctx;

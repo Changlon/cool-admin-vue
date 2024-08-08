@@ -1,7 +1,7 @@
 import { createDir, error, firstUpperCase, readFile, rootDir, toCamel } from "../utils";
 import { join } from "path";
 import axios from "axios";
-import { isArray, isEmpty, last, merge } from "lodash";
+import { isArray, isEmpty, last, merge, values } from "lodash";
 import { createWriteStream } from "fs";
 import prettier from "prettier";
 import { config } from "../config";
@@ -10,6 +10,27 @@ import type { Eps } from "../../types";
 let service = {};
 let list: Eps.Entity[] = [];
 let customList: Eps.Entity[] = [];
+
+// 获取请求地址
+function getEpsUrl() {
+	let url = config.eps.api;
+
+	if (!url) {
+		url = config.type;
+	}
+
+	switch (url) {
+		case "app":
+			url = "/app/base/comm/eps";
+			break;
+
+		case "admin":
+			url = "/admin/base/open/eps";
+			break;
+	}
+
+	return url;
+}
 
 // 获取路径
 function getEpsPath(filename?: string) {
@@ -46,17 +67,7 @@ async function getData(data?: Eps.Entity[]) {
 	}
 
 	// 请求地址
-	let url = config.reqUrl;
-
-	switch (config.type) {
-		case "app":
-			url += "/app/base/comm/eps";
-			break;
-
-		case "admin":
-			url += "/admin/base/open/eps";
-			break;
-	}
+	const url = config.reqUrl + getEpsUrl();
 
 	// 请求数据
 	await axios
@@ -68,7 +79,7 @@ async function getData(data?: Eps.Entity[]) {
 
 			if (code === 1000) {
 				if (!isEmpty(data) && data) {
-					merge(list, Object.values(data).flat() as Eps.Entity[]);
+					list = values(data).flat();
 				}
 			} else {
 				error(`[cool-eps] ${message}`);
@@ -96,16 +107,18 @@ async function getData(data?: Eps.Entity[]) {
 		if (!e.namespace) {
 			e.namespace = "";
 		}
-
 		if (!e.api) {
 			e.api = [];
+		}
+		if (!e.columns) {
+			e.columns = [];
 		}
 	});
 }
 
 // 创建 json 文件
 function createJson() {
-	const d = list.map((e) => {
+	const arr = list.map((e) => {
 		return {
 			prefix: e.prefix,
 			name: e.name || "",
@@ -119,9 +132,19 @@ function createJson() {
 		};
 	});
 
-	createWriteStream(getEpsPath("eps.json"), {
-		flags: "w",
-	}).write(JSON.stringify(d));
+	const content = JSON.stringify(arr);
+	const local_content = readFile(getEpsPath("eps.json"));
+
+	// 是否需要更新
+	const isUpdate = content != local_content;
+
+	if (isUpdate) {
+		createWriteStream(getEpsPath("eps.json"), {
+			flags: "w",
+		}).write(content);
+	}
+
+	return isUpdate;
 }
 
 // 创建描述文件
@@ -143,6 +166,7 @@ async function createDescribe({ list, service }: { list: Eps.Entity[]; service: 
 	// 创建 Entity
 	function createEntity() {
 		const t0: string[][] = [];
+		const arr: string[] = [];
 
 		for (const item of list) {
 			if (!item.name) continue;
@@ -166,7 +190,11 @@ async function createDescribe({ list, service }: { list: Eps.Entity[]; service: 
 			t.push(" */\n");
 			t.push(`[key: string]: any;`);
 			t.push("}");
-			t0.push(t);
+
+			if (!arr.includes(item.name)) {
+				arr.push(item.name);
+				t0.push(t);
+			}
 		}
 
 		return t0.map((e) => e.join("")).join("\n\n");
@@ -295,7 +323,9 @@ async function createDescribe({ list, service }: { list: Eps.Entity[]; service: 
 										)}): Promise<${res}>;`,
 									);
 
-									permission.push(n);
+									if (!permission.includes(n)) {
+										permission.push(n);
+									}
 								}
 							});
 
@@ -372,22 +402,28 @@ async function createDescribe({ list, service }: { list: Eps.Entity[]; service: 
 		trailingComma: "none",
 	});
 
-	// 创建 eps 描述文件
-	createWriteStream(getEpsPath("eps.d.ts"), {
-		flags: "w",
-	}).write(content);
+	const local_content = readFile(getEpsPath("eps.d.ts"));
+
+	// 是否需要更新
+	if (content != local_content) {
+		// 创建 eps 描述文件
+		createWriteStream(getEpsPath("eps.d.ts"), {
+			flags: "w",
+		}).write(content);
+	}
 }
 
 // 创建 service
 function createService() {
+	// 路径第一层作为 id 标识
+	const id = getEpsUrl().split("/")[1];
+
 	list.forEach((e) => {
+		// 请求地址
+		const path = e.prefix[0] == "/" ? e.prefix.substring(1, e.prefix.length) : e.prefix;
+
 		// 分隔路径
-		const arr = e.prefix
-			.replace(/\//, "")
-			.replace(config.type, "")
-			.split("/")
-			.filter(Boolean)
-			.map(toCamel);
+		const arr = path.replace(id, "").split("/").filter(Boolean).map(toCamel);
 
 		// 遍历
 		function deep(d: any, i: number) {
@@ -405,7 +441,7 @@ function createService() {
 					// 不存在则创建
 					if (!d[k]) {
 						d[k] = {
-							namespace: e.prefix.substring(1, e.prefix.length),
+							namespace: path,
 							permission: {},
 						};
 					}
@@ -421,12 +457,11 @@ function createService() {
 					});
 
 					// 创建权限
-					getNames(d[k]).forEach((e) => {
-						d[k].permission[e] =
-							`${d[k].namespace.replace(`${config.type}/`, "")}/${e}`.replace(
-								/\//g,
-								":",
-							);
+					getNames(d[k]).forEach((i) => {
+						d[k].permission[i] = `${d[k].namespace.replace(`${id}/`, "")}/${i}`.replace(
+							/\//g,
+							":",
+						);
 					});
 				}
 			}
@@ -448,7 +483,7 @@ export async function createEps(query?: { list: any[] }) {
 	createDir(getEpsPath(), true);
 
 	// 创建 json 文件
-	createJson();
+	const isUpdate = createJson();
 
 	// 创建描述文件
 	createDescribe({ service, list });
@@ -456,5 +491,6 @@ export async function createEps(query?: { list: any[] }) {
 	return {
 		service,
 		list,
+		isUpdate,
 	};
 }

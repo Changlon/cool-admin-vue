@@ -1,4 +1,4 @@
-import { isFunction, isRegExp, isString } from "lodash-es";
+import { isEmpty, isFunction, isRegExp, isString } from "lodash-es";
 import { PropRules } from "../dict";
 import type { EpsColumn, EpsModule } from "../types";
 
@@ -10,7 +10,7 @@ export function useCode() {
 			const [label, ...arr] = comment.split(" ");
 
 			// 选项列表
-			const list = arr.map((e) => {
+			const list: any[] = arr.map((e) => {
 				const [value, label] = e.split("-");
 
 				return {
@@ -18,6 +18,17 @@ export function useCode() {
 					value: isNaN(Number(value)) ? value : Number(value)
 				};
 			});
+
+			// boolean
+			if (list.length == 2) {
+				list.forEach((e) => {
+					if (e.value == 1) {
+						e.type = "success";
+					} else {
+						e.type = "danger";
+					}
+				});
+			}
 
 			const d = {
 				table: {
@@ -81,7 +92,7 @@ export function useCode() {
 	// 创建组件
 	function createComponent(column: EpsColumn, columns: EpsColumn[]) {
 		const prop = column.propertyName;
-		let label = column.comment;
+		let label = column.comment || "";
 		let d: any;
 		let isHidden = false;
 
@@ -176,7 +187,14 @@ export function useCode() {
 	}
 
 	// 创建 vue 代码
-	function createVue({ router = "", columns = [], prefix = "", api = [] }: EpsModule) {
+	function createVue({
+		router = "",
+		columns = [],
+		prefix = "",
+		api = [],
+		fieldEq = [],
+		keyWordLikeFields = []
+	}: EpsModule) {
 		// 新增、编辑
 		const upsert = {
 			items: [] as DeepPartial<ClForm.Item>[]
@@ -186,6 +204,9 @@ export function useCode() {
 		const table = {
 			columns: [] as DeepPartial<ClTable.Column>[]
 		};
+
+		// 选项
+		const options = {};
 
 		// 遍历
 		columns.forEach((e) => {
@@ -202,6 +223,21 @@ export function useCode() {
 				item.required = true;
 			}
 
+			// 字典
+			const dict = item.component?.options || column.dict;
+
+			if (!isEmpty(dict)) {
+				options[item.prop] = dict;
+
+				const str = `$$options.${item.prop}$$`;
+
+				if (!column.component) {
+					column.dict = str;
+				}
+
+				item.component.options = str;
+			}
+
 			// 表单忽略
 			if (!["createTime", "updateTime", "id", "endTime", "endDate"].includes(item.prop)) {
 				upsert.items.push(item);
@@ -209,6 +245,11 @@ export function useCode() {
 
 			// 表格忽略
 			if (!["id"].includes(item.prop)) {
+				// 默认排序
+				if (item.prop == "createTime") {
+					column.sortable = "desc";
+				}
+
 				table.columns.push(column);
 			}
 
@@ -282,57 +323,105 @@ export function useCode() {
 			});
 		}
 
+		// 筛选
+		const clFilter = fieldEq
+			.map((field) => {
+				if (isEmpty(options[field])) {
+					return "";
+				}
+
+				const item = upsert.items.find((e) => e.prop == field);
+
+				if (!item) {
+					return "";
+				}
+
+				return `<!-- 筛选${item.label} -->\n<cl-filter label="${item.label}">\n<cl-select prop="${field}" :options="options.${field}" />\n</cl-filter>`;
+			})
+			.filter(Boolean)
+			.join("\n");
+
+		// 关键字搜索
+		const clSearchKeyPlaceholder = keyWordLikeFields
+			.map((field) => {
+				return table.columns.find((e) => e.prop == field)?.label;
+			})
+			.filter((e) => !!e)
+			.join("、");
+
+		// 选项
+		const ConstOptions = `${
+			isEmpty(options)
+				? ""
+				: "\n// 选项\nconst options = reactive(" + toCodeString(options) + ")\n"
+		}`;
+
+		// Vue 依赖
+		let ImportVue = "";
+
+		if (ConstOptions) {
+			ImportVue = "import { reactive } from 'vue';\n";
+		}
+
 		// 代码模板
-		return `<template>
-            <cl-crud ref="Crud">
-                <cl-row>
-                    <!-- 刷新按钮 -->
-                    <cl-refresh-btn />
-                    ${perms.add ? "<!-- 新增按钮 -->\n<cl-add-btn />" : ""}
-                    ${perms.del ? "<!-- 删除按钮 -->\n<cl-multi-delete-btn />" : ""}
-                    <cl-flex1 />
-                    <!-- 关键字搜索 -->
-                    <cl-search-key />
-                </cl-row>
-        
-                <cl-row>
-                    <!-- 数据表格 -->
-                    <cl-table ref="Table" />
-                </cl-row>
-        
-                <cl-row>
-                    <cl-flex1 />
-                    <!-- 分页控件 -->
-                    <cl-pagination />
-                </cl-row>
-        
-                <!-- 新增、编辑 -->
-                <cl-upsert ref="Upsert" />
-            </cl-crud>
-        </template>
-        
-        <script lang="ts" name="${router.replace(/^\//, "").replace(/\//g, "-")}" setup>
-        import { useCrud, useTable, useUpsert } from "@cool-vue/crud";
-        import { useCool } from "/@/cool";
-        
-        const { service } = useCool();
-        
-        // cl-upsert
-        const Upsert = useUpsert(${toCodeString(upsert)});
-        
-        // cl-table
-        const Table = useTable(${toCodeString(table)});
-        
-        // cl-crud
-        const Crud = useCrud(
-            {
-                service: ${service.join(".")}
-            },
-            (app) => {
-                app.refresh();
-            }
-        );
-        </script>`;
+		const temp = `<template>
+	<cl-crud ref="Crud">
+		<cl-row>
+			<!-- 刷新按钮 -->
+			<cl-refresh-btn />
+			${perms.add ? "<!-- 新增按钮 -->\n			<cl-add-btn />" : ""}
+			${perms.del ? "<!-- 删除按钮 -->\n			<cl-multi-delete-btn />" : ""}
+			${clFilter}
+			<cl-flex1 />
+			<!-- 关键字搜索 -->
+			<cl-search-key placeholder="搜索${clSearchKeyPlaceholder || "关键字"}" />
+		</cl-row>
+
+		<cl-row>
+			<!-- 数据表格 -->
+			<cl-table ref="Table" />
+		</cl-row>
+
+		<cl-row>
+			<cl-flex1 />
+			<!-- 分页控件 -->
+			<cl-pagination />
+		</cl-row>
+
+		<!-- 新增、编辑 -->
+		<cl-upsert ref="Upsert" />
+	</cl-crud>
+</template>
+
+<script lang="ts" name="${router.replace(/^\//, "").replace(/\//g, "-")}" setup>
+import { useCrud, useTable, useUpsert } from "@cool-vue/crud";
+import { useCool } from "/@/cool";
+${ImportVue}
+const { service } = useCool();
+${ConstOptions}
+// cl-upsert
+const Upsert = useUpsert(${toCodeString(upsert)});
+
+// cl-table
+const Table = useTable(${toCodeString(table)});
+
+// cl-crud
+const Crud = useCrud(
+	{
+		service: ${service.join(".")}
+	},
+	(app) => {
+		app.refresh();
+	}
+);
+
+// 刷新
+function refresh(params?: any) {
+	Crud.value?.refresh(params);
+}
+</script>`;
+
+		return temp.replace(/"\$\$|\$\$"/g, "");
 	}
 
 	// 转成代码字符串

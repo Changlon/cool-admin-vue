@@ -1,4 +1,4 @@
-import { App, reactive } from "vue";
+import { type App, reactive } from "vue";
 import { mitt } from "./utils/mitt";
 import { emitter } from "./emitter";
 import { locale } from "./locale";
@@ -64,13 +64,14 @@ function setConfig(app: App, options: Options = {}) {
 					autoHeight: true,
 					contextMenu: ["refresh", "check", "edit", "delete", "order-asc", "order-desc"],
 					column: {
-						align: "center"
+						align: "center",
+						opWidth: 160
 					}
 				}
 			},
 			events: {}
-		},
-		options || {}
+		} as Options,
+		options
 	);
 
 	// 初始化事件

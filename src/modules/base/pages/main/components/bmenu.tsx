@@ -27,19 +27,17 @@ export default defineComponent({
 				return list
 					.filter((e) => e.isShow)
 					.map((e) => {
-						let html = null;
-
 						const item = (e: Menu.Item) => {
-							return (
-								<div class="wrap">
+							return [
+								<el-icon>
 									<cl-svg name={e.icon} />
-									<span v-show={!app.isFold || index != 1}>{e.meta?.label}</span>
-								</div>
-							);
+								</el-icon>,
+								<span v-show={!app.isFold || index != 1}>{e.meta?.label}</span>
+							];
 						};
 
 						if (e.type == 0) {
-							html = h(
+							return h(
 								<el-sub-menu />,
 								{
 									index: String(e.id),
@@ -56,7 +54,7 @@ export default defineComponent({
 								}
 							);
 						} else {
-							html = h(
+							return h(
 								<el-menu-item />,
 								{
 									index:
@@ -74,8 +72,6 @@ export default defineComponent({
 								}
 							);
 						}
-
-						return html;
 					});
 			}
 

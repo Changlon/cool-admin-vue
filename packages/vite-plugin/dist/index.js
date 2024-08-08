@@ -1,14 +1,15 @@
 (function (global, factory) {
-    typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('fs'), require('path'), require('axios'), require('lodash'), require('prettier'), require('@vue/compiler-sfc'), require('magic-string'), require('glob')) :
-    typeof define === 'function' && define.amd ? define(['exports', 'fs', 'path', 'axios', 'lodash', 'prettier', '@vue/compiler-sfc', 'magic-string', 'glob'], factory) :
-    (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.index = {}, global.fs, global.path, global.axios, global.lodash, global.prettier, global.compilerSfc, global.magicString, global.glob));
-})(this, (function (exports, fs, path, axios, lodash, prettier, compilerSfc, magicString, glob) { 'use strict';
+    typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('fs'), require('path'), require('axios'), require('lodash'), require('prettier'), require('@vue/compiler-sfc'), require('magic-string'), require('glob'), require('svgo')) :
+    typeof define === 'function' && define.amd ? define(['exports', 'fs', 'path', 'axios', 'lodash', 'prettier', '@vue/compiler-sfc', 'magic-string', 'glob', 'svgo'], factory) :
+    (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.index = {}, global.fs, global.path, global.axios, global.lodash, global.prettier, global.compilerSfc, global.magicString, global.glob, global.svgo));
+})(this, (function (exports, fs, path, axios, lodash, prettier, compilerSfc, magicString, glob, svgo) { 'use strict';
 
     const config = {
         type: "admin",
         reqUrl: "",
         demo: false,
         eps: {
+            api: "",
             dist: "./build/cool",
             mapping: [
                 {
@@ -112,6 +113,22 @@
     let service = {};
     let list = [];
     let customList = [];
+    // 获取请求地址
+    function getEpsUrl() {
+        let url = config.eps.api;
+        if (!url) {
+            url = config.type;
+        }
+        switch (url) {
+            case "app":
+                url = "/app/base/comm/eps";
+                break;
+            case "admin":
+                url = "/admin/base/open/eps";
+                break;
+        }
+        return url;
+    }
     // 获取路径
     function getEpsPath(filename) {
         return path.join(config.type == "admin" ? config.eps.dist : rootDir(config.eps.dist), filename || "");
@@ -140,15 +157,7 @@
             error(`[cool-eps] ${epsPath} 文件异常, ${err.message}`);
         }
         // 请求地址
-        let url = config.reqUrl;
-        switch (config.type) {
-            case "app":
-                url += "/app/base/comm/eps";
-                break;
-            case "admin":
-                url += "/admin/base/open/eps";
-                break;
-        }
+        const url = config.reqUrl + getEpsUrl();
         // 请求数据
         await axios
             .get(url, {
@@ -158,7 +167,7 @@
             const { code, data, message } = res.data;
             if (code === 1000) {
                 if (!lodash.isEmpty(data) && data) {
-                    lodash.merge(list, Object.values(data).flat());
+                    list = lodash.values(data).flat();
                 }
             }
             else {
@@ -188,11 +197,14 @@
             if (!e.api) {
                 e.api = [];
             }
+            if (!e.columns) {
+                e.columns = [];
+            }
         });
     }
     // 创建 json 文件
     function createJson() {
-        const d = list.map((e) => {
+        const arr = list.map((e) => {
             return {
                 prefix: e.prefix,
                 name: e.name || "",
@@ -205,9 +217,16 @@
                 }),
             };
         });
-        fs.createWriteStream(getEpsPath("eps.json"), {
-            flags: "w",
-        }).write(JSON.stringify(d));
+        const content = JSON.stringify(arr);
+        const local_content = readFile(getEpsPath("eps.json"));
+        // 是否需要更新
+        const isUpdate = content != local_content;
+        if (isUpdate) {
+            fs.createWriteStream(getEpsPath("eps.json"), {
+                flags: "w",
+            }).write(content);
+        }
+        return isUpdate;
     }
     // 创建描述文件
     async function createDescribe({ list, service }) {
@@ -229,6 +248,7 @@
         // 创建 Entity
         function createEntity() {
             const t0 = [];
+            const arr = [];
             for (const item of list) {
                 if (!item.name)
                     continue;
@@ -250,7 +270,10 @@
                 t.push(" */\n");
                 t.push(`[key: string]: any;`);
                 t.push("}");
-                t0.push(t);
+                if (!arr.includes(item.name)) {
+                    arr.push(item.name);
+                    t0.push(t);
+                }
             }
             return t0.map((e) => e.join("")).join("\n\n");
         }
@@ -348,7 +371,9 @@
                                         t.push(` * ${a.summary || n}\n`);
                                         t.push(" */\n");
                                         t.push(`${n}(data${q.length == 1 ? "?" : ""}: ${q.join("")}): Promise<${res}>;`);
-                                        permission.push(n);
+                                        if (!permission.includes(n)) {
+                                            permission.push(n);
+                                        }
                                     }
                                 });
                                 // 权限标识
@@ -411,21 +436,24 @@
             printWidth: 100,
             trailingComma: "none",
         });
-        // 创建 eps 描述文件
-        fs.createWriteStream(getEpsPath("eps.d.ts"), {
-            flags: "w",
-        }).write(content);
+        const local_content = readFile(getEpsPath("eps.d.ts"));
+        // 是否需要更新
+        if (content != local_content) {
+            // 创建 eps 描述文件
+            fs.createWriteStream(getEpsPath("eps.d.ts"), {
+                flags: "w",
+            }).write(content);
+        }
     }
     // 创建 service
     function createService() {
+        // 路径第一层作为 id 标识
+        const id = getEpsUrl().split("/")[1];
         list.forEach((e) => {
+            // 请求地址
+            const path = e.prefix[0] == "/" ? e.prefix.substring(1, e.prefix.length) : e.prefix;
             // 分隔路径
-            const arr = e.prefix
-                .replace(/\//, "")
-                .replace(config.type, "")
-                .split("/")
-                .filter(Boolean)
-                .map(toCamel);
+            const arr = path.replace(id, "").split("/").filter(Boolean).map(toCamel);
             // 遍历
             function deep(d, i) {
                 const k = arr[i];
@@ -441,7 +469,7 @@
                         // 不存在则创建
                         if (!d[k]) {
                             d[k] = {
-                                namespace: e.prefix.substring(1, e.prefix.length),
+                                namespace: path,
                                 permission: {},
                             };
                         }
@@ -454,9 +482,8 @@
                             }
                         });
                         // 创建权限
-                        getNames(d[k]).forEach((e) => {
-                            d[k].permission[e] =
-                                `${d[k].namespace.replace(`${config.type}/`, "")}/${e}`.replace(/\//g, ":");
+                        getNames(d[k]).forEach((i) => {
+                            d[k].permission[i] = `${d[k].namespace.replace(`${id}/`, "")}/${i}`.replace(/\//g, ":");
                         });
                     }
                 }
@@ -473,12 +500,13 @@
         // 创建目录
         createDir(getEpsPath(), true);
         // 创建 json 文件
-        createJson();
+        const isUpdate = createJson();
         // 创建描述文件
         createDescribe({ service, list });
         return {
             service,
             list,
+            isUpdate,
         };
     }
 
@@ -503,52 +531,6 @@
             }
         }
         return null;
-    }
-
-    function findFiles(dir) {
-        const res = [];
-        const dirs = fs.readdirSync(dir, {
-            withFileTypes: true,
-        });
-        for (const d of dirs) {
-            if (d.isDirectory()) {
-                res.push(...findFiles(dir + d.name + "/"));
-            }
-            else {
-                if (path.extname(d.name) == ".svg") {
-                    const svg = fs.readFileSync(dir + d.name)
-                        .toString()
-                        .replace(/(\r)|(\n)/g, "")
-                        .replace(/<svg([^>+].*?)>/, (_, $2) => {
-                        let width = 0;
-                        let height = 0;
-                        let content = $2.replace(/(width|height)="([^>+].*?)"/g, (_, s2, s3) => {
-                            if (s2 === "width") {
-                                width = s3;
-                            }
-                            else if (s2 === "height") {
-                                height = s3;
-                            }
-                            return "";
-                        });
-                        if (!/(viewBox="[^>+].*?")/g.test($2)) {
-                            content += `viewBox="0 0 ${width} ${height}"`;
-                        }
-                        return `<symbol id="icon-${d.name.replace(".svg", "")}" ${content}>`;
-                    })
-                        .replace("</svg>", "</symbol>");
-                    res.push(svg);
-                }
-            }
-        }
-        return res;
-    }
-    function createSvg(html) {
-        const res = findFiles(rootDir("./src/"));
-        return html.replace("<body>", `<body>
-			<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="position: absolute; width: 0; height: 0">
-				${res.join("")}
-			</svg>`);
     }
 
     // 创建文件
@@ -621,12 +603,6 @@
                 }
                 return code;
             },
-            transformIndexHtml(html) {
-                if (config.type == "admin") {
-                    return createSvg(html);
-                }
-                return html;
-            },
         };
     }
 
@@ -666,7 +642,9 @@
     }
 
     async function createCtx() {
-        let ctx = {};
+        let ctx = {
+            serviceLang: "Node",
+        };
         if (config.type == "app") {
             const manifest = readFile(rootDir("manifest.json"), true);
             // 文件路径
@@ -707,8 +685,15 @@
                     });
                 }
             }
+            // 排序后检测，避免加载顺序问题
+            function order(d) {
+                return {
+                    pages: lodash.orderBy(d.pages, "path"),
+                    subPackages: lodash.orderBy(d.subPackages, "root"),
+                };
+            }
             // 是否需要更新 pages.json
-            if (!lodash.isEqual(ctxData, ctx)) {
+            if (!lodash.isEqual(order(ctxData), order(ctx))) {
                 console.log("[cool-ctx] pages updated");
                 writeFile(ctxPath, JSON.stringify(ctx, null, 4));
             }
@@ -718,12 +703,102 @@
         if (config.type == "admin") {
             const list = fs.readdirSync(rootDir("./src/modules"));
             ctx.modules = list.filter((e) => !e.includes("."));
+            await axios
+                .get(config.reqUrl + "/admin/base/comm/program", {
+                timeout: 5000,
+            })
+                .then((res) => {
+                const { code, data, message } = res.data;
+                if (code === 1000) {
+                    ctx.serviceLang = data || "Node";
+                }
+                else {
+                    error(`[cool-ctx] ${message}`);
+                }
+            })
+                .catch((err) => {
+                // console.error(['[cool-ctx] ', err.message])
+            });
         }
         return ctx;
     }
 
+    let svgIcons = [];
+    function findSvg(dir) {
+        const arr = [];
+        const dirs = fs.readdirSync(dir, {
+            withFileTypes: true,
+        });
+        for (const d of dirs) {
+            if (d.isDirectory()) {
+                arr.push(...findSvg(dir + d.name + "/"));
+            }
+            else {
+                if (path.extname(d.name) == ".svg") {
+                    svgIcons.push(path.basename(d.name, ".svg"));
+                    const svg = fs.readFileSync(dir + d.name)
+                        .toString()
+                        .replace(/(\r)|(\n)/g, "")
+                        .replace(/<svg([^>+].*?)>/, (_, $2) => {
+                        let width = 0;
+                        let height = 0;
+                        let content = $2.replace(/(width|height)="([^>+].*?)"/g, (_, s2, s3) => {
+                            if (s2 === "width") {
+                                width = s3;
+                            }
+                            else if (s2 === "height") {
+                                height = s3;
+                            }
+                            return "";
+                        });
+                        if (!/(viewBox="[^>+].*?")/g.test($2)) {
+                            content += `viewBox="0 0 ${width} ${height}"`;
+                        }
+                        return `<symbol id="icon-${d.name.replace(".svg", "")}" ${content}>`;
+                    })
+                        .replace("</svg>", "</symbol>");
+                    arr.push(svg);
+                }
+            }
+        }
+        return arr;
+    }
+    function compilerSvg() {
+        svgIcons = [];
+        return findSvg(rootDir("./src/"))
+            .map((e) => {
+            return svgo.optimize(e)?.data || e;
+        })
+            .join("");
+    }
+    async function createSvg() {
+        const html = compilerSvg();
+        const code = `
+if (typeof window !== 'undefined') {
+	function loadSvg() {
+		const svgDom = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svgDom.style.position = 'absolute';
+		svgDom.style.width = '0';
+		svgDom.style.height = '0';
+		svgDom.setAttribute('xmlns','http://www.w3.org/2000/svg');
+		svgDom.setAttribute('xmlns:link','http://www.w3.org/1999/xlink');
+		svgDom.innerHTML = '${html}';
+		document.body.insertBefore(svgDom, document.body.firstChild);
+	}
+
+	loadSvg();
+}
+		`;
+        return { code, svgIcons };
+    }
+
     async function virtual() {
-        const virtualModuleIds = ["virtual:eps", "virtual:ctx"];
+        const virtualModuleIds = [
+            "virtual:eps",
+            "virtual:ctx",
+            "virtual:svg-register",
+            "virtual:svg-icons",
+        ];
         return {
             name: "vite-cool-virtual",
             enforce: "pre",
@@ -747,12 +822,14 @@
                 if (!["pages.json", "dist", "build/cool", "eps.json", "eps.d.ts"].some((e) => file.includes(e))) {
                     createCtx();
                     createEps().then((data) => {
-                        // 通知客户端刷新
-                        (server.hot || server.ws).send({
-                            type: "custom",
-                            event: "eps-update",
-                            data,
-                        });
+                        if (data.isUpdate) {
+                            // 通知客户端刷新
+                            (server.hot || server.ws).send({
+                                type: "custom",
+                                event: "eps-update",
+                                data,
+                            });
+                        }
                     });
                 }
             },
@@ -774,6 +851,16 @@
 					export const ctx = ${JSON.stringify(ctx)}
 				`;
                 }
+                if (id == "\0virtual:svg-register") {
+                    const { code } = await createSvg();
+                    return code;
+                }
+                if (id == "\0virtual:svg-icons") {
+                    const { svgIcons } = await createSvg();
+                    return `
+					export const svgIcons = ${JSON.stringify(svgIcons)}
+				`;
+                }
             },
         };
     }
@@ -785,12 +872,18 @@
         config.reqUrl = options.proxy["/dev/"].target;
         // Eps
         if (options.eps) {
-            const { dist, mapping } = options.eps;
+            const { dist, mapping, api } = options.eps;
+            // 类型
+            if (api) {
+                config.eps.api = api;
+            }
+            // 输出目录
             if (dist) {
                 config.eps.dist = dist;
             }
+            // 匹配规则
             if (mapping) {
-                config.eps.mapping.unshift(...mapping);
+                lodash.merge(config.eps.mapping, mapping);
             }
         }
         return [base(), virtual(), demo(options.demo)];

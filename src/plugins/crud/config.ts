@@ -10,11 +10,12 @@ import "@cool-vue/crud/dist/index.css";
 
 export default (): Merge<ModuleConfig, CrudOptions> => {
 	return {
+		order: 100,
 		label: "CRUD",
 		description: "快速增删改查及一系列辅助组件",
 		author: "COOL",
-		version: "1.0.6",
-		updateTime: "2024-03-19",
+		version: "1.0.7",
+		updateTime: "2024-05-26",
 		demo: "/demo/crud",
 
 		// 组件全注册
