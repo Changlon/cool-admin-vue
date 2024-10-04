@@ -1,6 +1,6 @@
 <template>
-	<el-scrollbar class="plugins__wrapper">
-		<div class="plugins" @dragover="onDragover" @drop="onDrop">
+	<el-scrollbar class="plugins__wrapper" @dragover="onDragover" @drop="onDrop">
+		<div class="plugins">
 			<el-tabs v-model="tab.active" type="card" @tab-change="tab.onChange">
 				<el-tab-pane label="已安装插件" name="installed"> </el-tab-pane>
 				<el-tab-pane label="插件市场" name="shop"> </el-tab-pane>
@@ -114,7 +114,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Plus, Setting } from "@element-plus/icons-vue";
 import { marked } from "marked";
 import { useForm } from "@cool-vue/crud";
-import { merge, template } from "lodash-es";
+import { merge } from "lodash-es";
 
 const { service, refs, setRefs } = useCool();
 const Form = useForm();
@@ -141,7 +141,7 @@ const info = ref<Eps.PluginInfoEntity>();
 
 // 刷新
 function refresh() {
-	service.plugin.info.page().then((res) => {
+	service.plugin.info.page({ page: 1, size: 100 }).then((res) => {
 		list.value = res.list;
 	});
 }
